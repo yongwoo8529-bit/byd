@@ -8,48 +8,279 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Nanum+Gothic:wght@400;700;800&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Nanum+Gothic', sans-serif; }
+        body { font-family: 'Nanum Gothic', sans-serif; }
     </style>
-<script type="importmap">
-{
-  "imports": {
-    "react/": "https://esm.sh/react@^19.2.3/",
-    "react": "https://esm.sh/react@^19.2.3",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "@google/genai": "https://esm.sh/@google/genai@^1.37.0",
-    "lucide-react": "https://esm.sh/lucide-react@^0.562.0"
-  }
-}
-</script>
-<link rel="stylesheet" href="./index.css">
+    <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@19.2.3",
+        "react-dom/client": "https://esm.sh/react-dom@19.2.3/client",
+        "@google/genai": "https://esm.sh/@google/genai@1.37.0",
+        "lucide-react": "https://esm.sh/lucide-react@0.562.0"
+      }
+    }
+    </script>
 </head>
 <body class="bg-blue-50">
     <div id="root"></div>
-    <script>
-        // Polyfill for import.meta.hot (HMR)
-        if (!import.meta.hot) {
-            import.meta.hot = {
-                accept: () => {},
-                dispose: () => {}
-            };
+    <script type="module">
+        import React, { useState } from 'https://esm.sh/react@19.2.3';
+        import { createRoot } from 'https://esm.sh/react-dom@19.2.3/client';
+        import { GoogleGenAI, Type } from '@google/genai';
+        import { 
+          Sparkles, Rocket, BookOpen, Activity, Palette, User, ChevronRight,
+          RefreshCw, Heart, Target
+        } from 'lucide-react';
+
+        // Types
+        const SchoolGrade = {
+          LOW: '초등 저학년 (1-3학년)',
+          MID: '초등 고학년 (4-6학년)',
+          PRE_MIDDLE: '중학교 입학 준비 (예비 중1)'
+        };
+
+        // Gemini Service
+        async function getCareerCounseling(data) {
+          const apiKey = 'AIzaSyCfJ7QEbqPv5fJZM8lFiJqZ_pHj8BZ1mxE';
+          const ai = new GoogleGenAI({ apiKey });
+
+          const prompt = \`
+            당신은 세계 최고의 아동 심리 및 진로 상담 전문가입니다. 
+            아이(초등학생)가 입력한 키워드와 취미, 특기를 바탕으로 미래 경로를 설계해주세요.
+
+            [상담 대상 정보]
+            - 현재 학년: \${data.grade}
+            - 관심 키워드: \${data.keywords.join(', ')}
+            - 하고 싶은 일/취미: \${data.hobbies}
+            - 좋아하는 것/특기: \${data.talents}
+
+            [필수 분석 로직]
+            1. 직업 성격 구분:
+               - '학술형(ACADEMIC)': 의사, 교수, 연구원 등. 국영수 위주의 '공부'가 필수임을 명시하고 학습 계획 위주로 짭니다.
+               - '운동/실기형(SPORTS/PRACTICAL)': 운동선수, 요리사, 댄서 등. 재능이 우선이며 '공부'보다는 해당 분야에 '올인'하는 훈련을 강조합니다. 억지로 학원에 보내지 말라는 조언을 포함하세요.
+               - '창의형(ARTISTIC)': 예술가, 크리에이터 등. 영감과 경험을 강조합니다.
+            
+            2. 발달 단계별 가이드:
+               - 1~3학년: 흥미 위주, "무엇이든 될 수 있다"는 용기.
+               - 4~6학년: 조금 더 구체적인 준비 과정.
+               - 예비 중1: 중학교 입학 후 바로 실천 가능한 주간/월간 패턴 제안.
+
+            3. 부모님 조언: 
+               - 아이가 진심으로 하고 싶은 것을 방해하는 '불필요한 학원'을 거르도록 조언하세요.
+               - 아이의 재능에 맞는 '특화된 환경'을 만들어주는 법을 설명하세요.
+
+            결과는 반드시 지정된 JSON 형식으로 응답하세요.
+          \`;
+
+          const response = await ai.models.generateContent({
+            model: 'gemini-2.0-flash',
+            contents: prompt,
+            config: {
+              responseMimeType: 'application/json',
+              responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                  careerName: { type: Type.STRING },
+                  description: { type: Type.STRING },
+                  focusArea: { 
+                    type: Type.STRING, 
+                    enum: ['ACADEMIC', 'PRACTICAL', 'ARTISTIC', 'SPORTS']
+                  },
+                  actionPlan: { 
+                    type: Type.ARRAY, 
+                    items: { type: Type.STRING }
+                  },
+                  parentAdvice: { type: Type.STRING }
+                },
+                required: ['careerName', 'description', 'focusArea', 'actionPlan', 'parentAdvice']
+              }
+            }
+          });
+
+          return JSON.parse(response.text);
         }
+
+        // App Component
+        function App() {
+          const [step, setStep] = useState(1);
+          const [loading, setLoading] = useState(false);
+          const [data, setData] = useState({
+            keywords: [],
+            grade: '',
+            hobbies: '',
+            talents: ''
+          });
+          const [suggestion, setSuggestion] = useState(null);
+          const [currentKeyword, setCurrentKeyword] = useState('');
+
+          const addKeyword = () => {
+            if (currentKeyword.trim() && !data.keywords.includes(currentKeyword.trim())) {
+              setData({ ...data, keywords: [...data.keywords, currentKeyword.trim()] });
+              setCurrentKeyword('');
+            }
+          };
+
+          const handleStartAnalysis = async () => {
+            if (!data.grade || data.keywords.length < 2) {
+              alert("학년을 선택하고 단어를 최소 2개 이상 적어주세요!");
+              return;
+            }
+            setLoading(true);
+            try {
+              const result = await getCareerCounseling(data);
+              setSuggestion(result);
+              setStep(3);
+            } catch (error) {
+              console.error(error);
+              alert("AI 친구가 생각 중이에요. 잠시 후 다시 시도해 주세요!");
+            } finally {
+              setLoading(false);
+            }
+          };
+
+          const reset = () => {
+            setStep(1);
+            setSuggestion(null);
+            setData({
+              keywords: [],
+              grade: '',
+              hobbies: '',
+              talents: ''
+            });
+          };
+
+          return React.createElement('div', { className: "min-h-screen flex flex-col items-center justify-start p-4 md:p-8 bg-gradient-to-b from-blue-50 to-white" },
+            React.createElement('header', { className: "w-full max-w-2xl text-center mb-8" },
+              React.createElement('h1', { className: "text-4xl font-extrabold text-blue-600 flex items-center justify-center gap-2 drop-shadow-sm" },
+                React.createElement(Rocket, { className: "text-orange-400", size: 40 }),
+                " 드림 내비게이터"
+              ),
+              React.createElement('p', { className: "text-gray-600 mt-2 font-medium" }, "우리 아이의 진심을 찾는 AI 진로 상담소")
+            ),
+            
+            React.createElement('main', { className: "w-full max-w-2xl bg-white rounded-[2rem] shadow-2xl overflow-hidden border-8 border-blue-50" },
+              step === 1 && React.createElement('div', { className: "p-8 space-y-6" },
+                React.createElement('div', { className: "flex items-center gap-3 text-xl font-bold text-gray-800 border-b pb-4" },
+                  React.createElement(User, { className: "text-blue-500" }),
+                  " 안녕! 너에 대해 알려줘"
+                ),
+                
+                React.createElement('div', { className: "space-y-4" },
+                  React.createElement('label', { className: "block" },
+                    React.createElement('span', { className: "text-gray-700 font-bold ml-1" }, "지금 몇 학년이야?"),
+                    React.createElement('select', {
+                      className: "mt-2 block w-full rounded-2xl border-2 border-gray-100 p-4 bg-gray-50 focus:border-blue-400 focus:outline-none text-black font-semibold",
+                      value: data.grade,
+                      onChange: (e) => setData({...data, grade: e.target.value})
+                    },
+                      React.createElement('option', { value: "" }, "여기 눌러서 선택해봐!"),
+                      Object.values(SchoolGrade).map(grade => 
+                        React.createElement('option', { key: grade, value: grade }, grade)
+                      )
+                    )
+                  ),
+                  
+                  React.createElement('label', { className: "block" },
+                    React.createElement('span', { className: "text-gray-700 font-bold ml-1" }, "어떤 것들에 관심 있어? (최소 2개)"),
+                    React.createElement('div', { className: "mt-2 flex gap-2" },
+                      React.createElement('input', {
+                        type: "text",
+                        placeholder: "예: 우주, 과학",
+                        className: "flex-1 rounded-2xl border-2 border-gray-100 p-4 bg-gray-50 focus:border-blue-400 focus:outline-none",
+                        value: currentKeyword,
+                        onChange: (e) => setCurrentKeyword(e.target.value),
+                        onKeyPress: (e) => e.key === 'Enter' && addKeyword()
+                      }),
+                      React.createElement('button', {
+                        className: "px-6 py-4 bg-blue-500 text-white rounded-2xl font-bold hover:bg-blue-600",
+                        onClick: addKeyword
+                      }, "추가")
+                    ),
+                    React.createElement('div', { className: "mt-3 flex flex-wrap gap-2" },
+                      data.keywords.map(keyword =>
+                        React.createElement('span', {
+                          key: keyword,
+                          className: "bg-blue-100 text-blue-700 px-4 py-2 rounded-full text-sm font-bold flex items-center gap-2"
+                        },
+                          keyword,
+                          React.createElement('button', {
+                            onClick: () => setData({...data, keywords: data.keywords.filter(k => k !== keyword)})
+                          }, "✕")
+                        )
+                      )
+                    )
+                  ),
+                  
+                  React.createElement('textarea', {
+                    placeholder: "하고 싶은 일이나 취미를 적어줄래?",
+                    className: "w-full rounded-2xl border-2 border-gray-100 p-4 bg-gray-50 focus:border-blue-400 focus:outline-none min-h-24 text-black",
+                    value: data.hobbies,
+                    onChange: (e) => setData({...data, hobbies: e.target.value})
+                  }),
+                  
+                  React.createElement('textarea', {
+                    placeholder: "잘하는 것이나 특기를 적어줄래?",
+                    className: "w-full rounded-2xl border-2 border-gray-100 p-4 bg-gray-50 focus:border-blue-400 focus:outline-none min-h-24 text-black",
+                    value: data.talents,
+                    onChange: (e) => setData({...data, talents: e.target.value})
+                  })
+                ),
+                
+                React.createElement('button', {
+                  className: "w-full py-4 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-2xl font-bold text-lg hover:shadow-lg flex items-center justify-center gap-2",
+                  onClick: handleStartAnalysis,
+                  disabled: loading
+                },
+                  React.createElement(Sparkles, { size: 24 }),
+                  loading ? "AI 친구가 생각 중이에요..." : "AI 친구에게 물어보기"
+                )
+              ),
+              
+              step === 3 && suggestion && React.createElement('div', { className: "p-8 space-y-6" },
+                React.createElement('div', { className: "flex items-center gap-3 text-2xl font-bold text-blue-600 border-b pb-4" },
+                  React.createElement(Target, { size: 32 }),
+                  suggestion.careerName
+                ),
+                
+                React.createElement('p', { className: "text-gray-700 text-lg leading-relaxed" }, suggestion.description),
+                
+                React.createElement('div', { className: "bg-blue-50 rounded-2xl p-6" },
+                  React.createElement('h3', { className: "font-bold text-blue-700 mb-3 flex items-center gap-2" },
+                    React.createElement(Rocket, { size: 20 }),
+                    "다음 단계는?"
+                  ),
+                  React.createElement('ul', { className: "space-y-2" },
+                    suggestion.actionPlan.map((step, i) =>
+                      React.createElement('li', { key: i, className: "flex gap-3 text-gray-700" },
+                        React.createElement('span', { className: "font-bold text-blue-600" }, (i + 1) + "."),
+                        step
+                      )
+                    )
+                  )
+                ),
+                
+                React.createElement('div', { className: "bg-yellow-50 rounded-2xl p-6 border-2 border-yellow-200" },
+                  React.createElement('h3', { className: "font-bold text-yellow-800 mb-3 flex items-center gap-2" },
+                    React.createElement(Heart, { size: 20 }),
+                    "부모님께"
+                  ),
+                  React.createElement('p', { className: "text-gray-700 leading-relaxed" }, suggestion.parentAdvice)
+                ),
+                
+                React.createElement('button', {
+                  className: "w-full py-4 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-2xl font-bold text-lg hover:shadow-lg flex items-center justify-center gap-2",
+                  onClick: reset
+                },
+                  React.createElement(RefreshCw, { size: 24 }),
+                  "다시 시작하기"
+                )
+              )
+            )
+          );
+        }
+
+        const root = createRoot(document.getElementById('root'));
+        root.render(React.createElement(App));
     </script>
-<script type="module">
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import App from './App.tsx';
-
-const rootElement = document.getElementById('root');
-if (!rootElement) {
-  throw new Error("Could not find root element to mount to");
-}
-
-const root = ReactDOM.createRoot(rootElement);
-root.render(
-  React.createElement(React.StrictMode, null,
-    React.createElement(App)
-  )
-);
-</script>
 </body>
 </html>
