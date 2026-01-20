@@ -23,9 +23,18 @@
   }
 }
 </script>
-  <script type="module" crossorigin src="/byd/assets/index-kU7pi3p7.js"></script>
+  <script type="module" crossorigin src="/byd/assets/index-Dua3qjIu.js"></script>
 </head>
 <body class="bg-blue-50">
     <div id="root"></div>
+    <script>
+        // Polyfill for import.meta.hot (HMR)
+        if (!import.meta.hot) {
+            import.meta.hot = {
+                accept: () => {},
+                dispose: () => {}
+            };
+        }
+    </script>
 </body>
 </html>
