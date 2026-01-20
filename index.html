@@ -25,6 +25,31 @@
 </head>
 <body class="bg-blue-50">
     <div id="root"></div>
-<script type="module" src="./index.tsx"></script>
+    <script>
+        // Polyfill for import.meta.hot (HMR)
+        if (!import.meta.hot) {
+            import.meta.hot = {
+                accept: () => {},
+                dispose: () => {}
+            };
+        }
+    </script>
+<script type="module">
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App.tsx';
+
+const rootElement = document.getElementById('root');
+if (!rootElement) {
+  throw new Error("Could not find root element to mount to");
+}
+
+const root = ReactDOM.createRoot(rootElement);
+root.render(
+  React.createElement(React.StrictMode, null,
+    React.createElement(App)
+  )
+);
+</script>
 </body>
 </html>
